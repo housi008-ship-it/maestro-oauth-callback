@@ -3,43 +3,145 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connecting to Airtable...</title>
+  <title>Maestro OAuth Callback</title>
   <link rel="stylesheet" href="callback-styles.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin: 0 0 16px 0;
+      font-size: 24px;
+      color: #333;
+    }
+    .status {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status.warning {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    .code-display {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      border: 2px dashed #dee2e6;
+      margin: 16px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      word-break: break-all;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .code-display:hover {
+      background: #e9ecef;
+      border-color: #adb5bd;
+    }
+    .code-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    button {
+      background: #18A0FB;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0d8dd9;
+    }
+    button:active {
+      transform: translateY(1px);
+    }
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e9ecef;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #18A0FB;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
   <div class="container">
-    <div id="loading-state" class="status-card">
+    <h1>🔐 Maestro OAuth</h1>
+    <div id="status" class="status">
       <div class="spinner"></div>
-      <h2>Connecting...</h2>
-      <p class="status-message">Redirecting back to Figma...</p>
+      Processing authorization...
     </div>
-
-    <div id="success-state" class="status-card" style="display: none;">
-      <div class="icon success-icon">✓</div>
-      <h2>Authorization Complete!</h2>
-      <p class="status-message">Redirecting back to Figma...</p>
-      <div class="instructions">
-        <p><strong>If the redirect doesn't work automatically:</strong></p>
-        <ol>
-          <li>Switch back to Figma</li>
-          <li>The plugin should complete the connection</li>
-          <li>You can close this browser window</li>
-        </ol>
-        <button id="manual-redirect-btn" class="primary-btn">Open Figma Manually</button>
+    <div id="manual-fallback" style="display: none;">
+      <div class="code-label">Authorization Code (click to copy):</div>
+      <div id="code-display" class="code-display" title="Click to copy"></div>
+      <button id="copy-btn">📋 Copy Code</button>
+      <div class="hint">
+        <strong>Manual steps:</strong><br>
+        1. Copy the code above<br>
+        2. Open Figma Desktop App<br>
+        3. Reopen the Maestro plugin<br>
+        4. Paste the code in the fallback input field
       </div>
-    </div>
-
-    <div id="error-state" class="status-card error-card" style="display: none;">
-      <div class="icon error-icon">✕</div>
-      <h2>Connection Failed</h2>
-      <p class="status-message">Unable to complete the authorization</p>
-      <div id="error-details" class="error-message"></div>
-      <button id="retry-btn" class="secondary-btn">Try Again</button>
     </div>
   </div>
 
   <script>
     (function() {
+      console.log('[Callback] Page loaded');
+      
       // Parse URL parameters
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
@@ -47,66 +149,94 @@
       const error = urlParams.get('error');
       const errorDescription = urlParams.get('error_description');
 
-      // DOM elements
-      const loadingState = document.getElementById('loading-state');
-      const successState = document.getElementById('success-state');
-      const errorState = document.getElementById('error-state');
-      const errorDetails = document.getElementById('error-details');
-      const manualRedirectBtn = document.getElementById('manual-redirect-btn');
-      const retryBtn = document.getElementById('retry-btn');
+      const statusDiv = document.getElementById('status');
+      const manualFallback = document.getElementById('manual-fallback');
+      const codeDisplay = document.getElementById('code-display');
+      const copyBtn = document.getElementById('copy-btn');
 
-      // Handle OAuth errors
+      // Handle errors
       if (error) {
-        showError(`OAuth Error: ${error}`, errorDescription || 'No additional details provided');
+        console.error('[Callback] OAuth error:', error, errorDescription);
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = `
+          <strong>❌ Authorization Failed</strong><br>
+          ${errorDescription || error}<br>
+          <small>Please try again or contact support.</small>
+        `;
         return;
       }
 
-      // Validate required parameters
+      // Check for required parameters
       if (!code || !state) {
-        showError('Missing Parameters', 'Authorization code or state parameter is missing');
+        console.error('[Callback] Missing code or state parameter');
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = `
+          <strong>❌ Invalid Callback</strong><br>
+          Missing required parameters.<br>
+          <small>Please restart the OAuth flow.</small>
+        `;
         return;
       }
 
-      // Build deep link to pass code back to Figma
-      // Figma will do the token exchange (it can make network requests without CORS)
-      const deepLink = `figma://auth-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+      console.log('[Callback] Code and state received');
+      console.log('[Callback] Code:', code.substring(0, 20) + '...');
+      console.log('[Callback] State:', state.substring(0, 20) + '...');
 
-      console.log('[Callback] Redirecting to Figma with authorization code');
+      // Build deep link URL
+      const deepLinkUrl = 'figma://auth-callback?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state);
       
-      // Show success and redirect
-      showSuccess(deepLink);
+      console.log('[Callback] Deep link URL:', deepLinkUrl);
 
-      function showSuccess(deepLink) {
-        loadingState.style.display = 'none';
-        successState.style.display = 'block';
+      // Try to trigger deep link
+      statusDiv.className = 'status success';
+      statusDiv.innerHTML = `
+        <strong>✓ Authorization Successful!</strong><br>
+        Attempting to reopen Figma plugin...<br>
+        <small>This may take a few seconds.</small>
+      `;
 
-        // Attempt automatic redirect
-        setTimeout(() => {
-          window.location.href = deepLink;
-        }, 500);
+      // Attempt deep link
+      window.location.href = deepLinkUrl;
 
-        // Manual redirect button
-        if (manualRedirectBtn) {
-          manualRedirectBtn.onclick = () => {
-            window.location.href = deepLink;
-          };
-        }
-      }
-
-      function showError(title, message) {
-        loadingState.style.display = 'none';
-        errorState.style.display = 'block';
+      // Show manual fallback after delay (in case deep link doesn't work)
+      setTimeout(function() {
+        console.log('[Callback] Showing manual fallback');
+        statusDiv.className = 'status warning';
+        statusDiv.innerHTML = `
+          <strong>⚠️ Plugin didn't reopen?</strong><br>
+          Deep links only work in <strong>Figma Desktop App</strong>.<br>
+          If you're using Figma in a browser, use the manual option below.
+        `;
         
-        if (errorDetails) {
-          errorDetails.innerHTML = `<strong>${title}</strong><br>${message}`;
+        // Show manual code entry
+        manualFallback.style.display = 'block';
+        codeDisplay.textContent = code;
+
+        // Copy to clipboard functionality
+        function copyCode() {
+          navigator.clipboard.writeText(code).then(function() {
+            copyBtn.textContent = '✓ Copied!';
+            copyBtn.style.background = '#28a745';
+            setTimeout(function() {
+              copyBtn.textContent = '📋 Copy Code';
+              copyBtn.style.background = '#18A0FB';
+            }, 2000);
+          }).catch(function(err) {
+            console.error('[Callback] Copy failed:', err);
+            // Fallback: select text
+            const range = document.createRange();
+            range.selectNode(codeDisplay);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            copyBtn.textContent = 'Text selected - press Ctrl+C';
+          });
         }
 
-        if (retryBtn) {
-          retryBtn.onclick = () => {
-            window.location.href = window.location.origin + window.location.pathname;
-          };
-        }
-      }
+        copyBtn.addEventListener('click', copyCode);
+        codeDisplay.addEventListener('click', copyCode);
+
+      }, 3000); // Wait 3 seconds before showing fallback
+
     })();
   </script>
 </body>
