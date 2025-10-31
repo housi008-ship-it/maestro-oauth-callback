@@ -11,18 +11,18 @@
     <div id="loading-state" class="status-card">
       <div class="spinner"></div>
       <h2>Connecting...</h2>
-      <p class="status-message">Completing your Airtable authorization</p>
+      <p class="status-message">Redirecting back to Figma...</p>
     </div>
 
     <div id="success-state" class="status-card" style="display: none;">
       <div class="icon success-icon">✓</div>
-      <h2>Success!</h2>
+      <h2>Authorization Complete!</h2>
       <p class="status-message">Redirecting back to Figma...</p>
       <div class="instructions">
         <p><strong>If the redirect doesn't work automatically:</strong></p>
         <ol>
           <li>Switch back to Figma</li>
-          <li>The plugin should now be connected</li>
+          <li>The plugin should complete the connection</li>
           <li>You can close this browser window</li>
         </ol>
         <button id="manual-redirect-btn" class="primary-btn">Open Figma Manually</button>
@@ -47,10 +47,6 @@
       const error = urlParams.get('error');
       const errorDescription = urlParams.get('error_description');
 
-      // Configuration
-      const AIRTABLE_CLIENT_ID = '52040bca-e95a-491f-9c94-5d1713a8a2af';
-      const REDIRECT_URI = 'https://housi008-ship-it.github.io/maestro-oauth-callback/callback.html';
-
       // DOM elements
       const loadingState = document.getElementById('loading-state');
       const successState = document.getElementById('success-state');
@@ -71,53 +67,14 @@
         return;
       }
 
-      // Exchange authorization code for tokens using PKCE
-      exchangeCodeForTokens(code, state);
+      // Build deep link to pass code back to Figma
+      // Figma will do the token exchange (it can make network requests without CORS)
+      const deepLink = `figma://auth-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
 
-      async function exchangeCodeForTokens(code, state) {
-        try {
-          // Retrieve code_verifier from state (plugin stored it there)
-          const codeVerifier = state.split('|')[1];
-          if (!codeVerifier) {
-            throw new Error('Missing code_verifier in state parameter');
-          }
-
-          console.log('[Callback] Exchanging code for tokens...');
-
-          // Call Airtable token endpoint directly (PKCE - no backend needed!)
-          const response = await fetch('https://airtable.com/oauth2/v1/token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              code: code,
-              redirect_uri: REDIRECT_URI,
-              client_id: AIRTABLE_CLIENT_ID,
-              code_verifier: codeVerifier,
-            }).toString(),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error_description || errorData.error || 'Token exchange failed');
-          }
-
-          const tokens = await response.json();
-          console.log('[Callback] Tokens received successfully');
-
-          // Build deep link to return to Figma
-          const deepLink = `figma://auth-callback?access_token=${encodeURIComponent(tokens.access_token)}&refresh_token=${encodeURIComponent(tokens.refresh_token)}&expires_in=${tokens.expires_in}`;
-
-          // Show success and redirect
-          showSuccess(deepLink);
-
-        } catch (error) {
-          console.error('[Callback] Token exchange error:', error);
-          showError('Token Exchange Failed', error.message);
-        }
-      }
+      console.log('[Callback] Redirecting to Figma with authorization code');
+      
+      // Show success and redirect
+      showSuccess(deepLink);
 
       function showSuccess(deepLink) {
         loadingState.style.display = 'none';
@@ -126,7 +83,7 @@
         // Attempt automatic redirect
         setTimeout(() => {
           window.location.href = deepLink;
-        }, 1000);
+        }, 500);
 
         // Manual redirect button
         if (manualRedirectBtn) {
